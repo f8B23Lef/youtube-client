@@ -6,6 +6,7 @@ function makeRequest(searchStr = "Funny cats") {
       .then(function(result) {
         result.items.forEach(item => {
           console.log(item);
+          parseResult(item);
         });
       });
     } else {
@@ -27,6 +28,23 @@ function makeRequest(searchStr = "Funny cats") {
     // };
     // request.send();
   };
+
+const parseResult = function (result) {
+  const title = result.snippet.title;
+  console.log('title: ', title);
+  const link = `https://www.youtube.com/watch?v=${result.id.videoId}`;
+  console.log('link: ', link);
+  const author = result.snippet.channelTitle;
+  console.log('author: ', author);
+  const date = new Date(result.snippet.publishedAt);
+  const formatDate = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  console.log('date: ', formatDate);
+  const description =  result.snippet.description;
+  console.log('description: ', description);
+  const imageUrl = result.snippet.thumbnails.medium.url;
+  console.log('imageURL: ', imageUrl);
+  console.log('view: ');
+};
 
 const onKeyDown = function (key) {
   if (key.code == 'Enter') {
