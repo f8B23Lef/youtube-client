@@ -1,82 +1,111 @@
-window.onload = function () {
-  renderSearchField();
-  // renderPanel();
-  setEventListeners();
+// window.onload = function () {
+//   renderSearchField();
+// };
+const panel = {
+  // countPages: 15,
+  curPage: 1,
+  countPerPage: 4,
+  items: [],
+  requestStr: '',
+  pageToken: '',//???
+  el: null
 };
 
-const setEventListeners = function () {
-  document.querySelector('.search-form__button').addEventListener('click', makeVideoIdsRequest);
-  document.addEventListener('keydown', onKeyDown);
-  // document.querySelector('.pagination').addEventListener('click', goToPage);
+const PanelItem = function (struct) {
+  this.title = struct.snippet.title;
+  this.link = struct.id.videoId ? `https://www.youtube.com/watch?v=${struct.id.videoId}` : `https://www.youtube.com/channel/${struct.snippet.channelId}`;
+  this.author = struct.snippet.channelTitle;
+  this.date = struct.snippet.publishedAt.substring(0, 10);
+  this.description = struct.snippet.description;
+  this.imageUrl = struct.snippet.thumbnails.medium.url;
+  this.viewCount = struct.snippet.viewCount || '';//??????????? WHY???
+}
+/*****************************************************************/
+const getDataUrl = function () {
+  return `https://www.googleapis.com/youtube/v3/search?part=snippet&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&q=${getUserInput()}&maxResults=15`;
+}
+const getStatisticsUrl = function (videoIdsStr) {
+  return `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&id=${videoIdsStr}`;
 }
 
-const onKeyDown = function (key) {
-  if (key.code == 'Enter') {
-    key.preventDefault();
-    makeVideoIdsRequest();
+const getAdditionalDataUrl = function () {
+  return `https://www.googleapis.com/youtube/v3/search?part=snippet&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&q=${panel.requestStr}&pageToken=${panel.pageToken}&maxResults=15`;
+}
+/*****************************************************************/
+const renderSearchField = function () {
+  console.log('renderSearchField()');
+  const searchForm = 
+    '<form class="search-form"> \
+      <div class="search-form__content"> \
+        <span class="search-form__button"><i class="fas fa-search"></i></span> \
+        <input class="search-form__input" type="search" placeholder="Search..."/> \
+      </div> \
+    </form>';
+
+  document.body.insertAdjacentHTML('afterBegin', searchForm);
+
+  document.body.querySelector('.search-form__button').addEventListener('click', function() {
+    if (checkUserInput()) {
+      makeDataRequest();
+    } 
+  });
+
+  document.addEventListener('keydown', function(key) {
+    if (key.code == 'Enter' && checkUserInput()) {
+      key.preventDefault();
+      makeDataRequest();
+    }
+  });
+}
+/*****************************************************************/
+const getUserInput = function () {
+  return document.querySelector('.search-form__input').value.trim();
+}
+
+const checkUserInput = function () {
+  if (!isEmptyString(getUserInput())) {
+    hideMessage();
+    return true;
+  } else {
+    showMessage();
+    return false;
   }
-};
+}
 
-const goToPage = function (pageNumber) {
-  console.log('goToPage()');
-  console.log('pageNumber = ', pageNumber.target);
+const isEmptyString = function (str) {
+  return (str.length === 0 || !str.trim());
+}
+/*****************************************************************/
+const showMessage = function () {
+  if (isElementExist('.message')) {
+    document.querySelector('.message').hidden = false;
+  } else {
+    const message = '<p class="message">Please enter your request</p>';
+    //бордер красный сделать
+    document.querySelector('.search-form__content').insertAdjacentHTML('afterEnd', message);
+  }  
+}
 
-  if (pageNumber.target.tagName !== 'LI' || pageNumber.target.className === 'disable') {
-    return;
+const hideMessage = function () {
+  if (isElementExist('.message')) {
+    document.querySelector('.message').hidden = true;
+    //бордер серый сделать
   }
-
-  const prevSelectedPage = document.querySelector('.pagination li.active');
-  const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
-
-  clearSelectionPagination(indexPrevSelectedPage);
-
-  pageNumber.target.classList.add('active');
-
-  panel.curPage = pageNumber.target.innerText - 1;
-  
-  // renderPanelItems();
-  renderPanel();
-};
-
-const clearSelectionPagination = function (n) {
-  console.log('clearSelectionPagination()');
-  document.querySelector(`.pagination li:nth-child(${n + 1})`).classList.remove('active');
-};
-
-const panel = {
-  countPages: 15,
-  curPage: 0,
-  countPerPage: 4,
-  items: null
-};
-
-const panelItem = {
-  title: null,
-  link: null,
-  author: null,
-  date: null,
-  description: null,
-  imageUrl: null,
-  viewCount: null
-};
-
-function makeVideoIdsRequest() {
-  //&maxResults=15
-  //&pageToken=CAIQAA (nextPageToken or prevPageToken)
-  var url = `https://www.googleapis.com/youtube/v3/search?part=snippet&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&q=${getUserInput()}&maxResults=15`;
-  console.log('url = ', url);
-  fetch(url).then(function(response) {
+}
+/*****************************************************************/
+function makeDataRequest() {
+  fetch(getDataUrl()).then(function(response) {
     if (response.ok) {
-      const videoIds = [];
       response.json()
         .then(function(result) {
-          console.log(result);
-          result.items.forEach(item => {
-            videoIds.push(getVideoId(item));
-          });
+          // console.log(result);
+          panel.requestStr = getUserInput();
+          panel.pageToken = result.nextPageToken;
+          panel.curPage = 1;
+          panel.items = result.items;
         })
         .then(function() {
-          makeDataRequest(formVideoIdsStr(videoIds));
+          makeViewsRequest(panel.items.map(item => item.id.videoId).join(','));
         });
     } else {
       console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
@@ -86,49 +115,68 @@ function makeVideoIdsRequest() {
   });
 };
 
-function makeDataRequest(videoIdsStr) {
-  var url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&id=${videoIdsStr}`;
-  fetch(url).then(function(response) {
+function makeViewsRequest(videoIdsStr) {
+  fetch(getStatisticsUrl(videoIdsStr)).then(function(response) {
     if (response.ok) {
       response.json()
         .then(function(result) {
-          //проверка пришли ли данные
-          panel.items = result.items;
+          result.items.forEach((item, index) => {
+            panel.items[index].snippet.viewCount = item.statistics.viewCount;
+          });
+          console.log('new items: ', panel.items);
           renderPanel();
-          // renderPanelItems();
-          renderPagination();
         });
+    } else {
+      console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
+      renderPanel();
+    }
+    // renderPanel();
+  }, function(error) {
+    console.log(error);
+    renderPanel();
+  });
+};
+/*****************************************************************/
+function makeAdditionalDataRequest() {
+  fetch(getAdditionalDataUrl()).then(function(response) {
+    if (response.ok) {
+      response.json()
+        .then(function(result) {
+          panel.pageToken = result.nextPageToken;
+          result.items.forEach(item => panel.items.push(item));
+          console.log(panel.items);
+        })
+        // .then(function() {
+        //   makeViewsRequest(panel.items.map(item => item.id.videoId).join(','));
+        // });
     } else {
       console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
     }
   }, function(error) {
-    console.log(error);
+    console.log('error: ', error);
   });
 };
 
-const getVideoId = function (item) {
-  return item.id.videoId;
-}
-
-const formVideoIdsStr = function (videoId) {
-  return videoId.join(',');
-}
-
-const getUserInput = function () {
-  return document.querySelector('.search-form__input').value/* || 'cat'*/;
-}
-
-const parseResult = function (result) {
-  panelItem.title = result.snippet.title;
-  panelItem.link = `https://www.youtube.com/watch?v=${result.id}`;
-  panelItem.author = result.snippet.channelTitle;
-  const date = result.snippet.publishedAt.split('-');
-  panelItem.date = `${date[0]}-${date[1]}-${date[2].substring(0, 2)}`;
-  panelItem.description =  result.snippet.description;
-  panelItem.imageUrl = result.snippet.thumbnails.medium.url;
-  panelItem.viewCount = result.statistics.viewCount;
-};
+// function makeAdditionalViewsRequest(videoIdsStr) {
+//   const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&id=${videoIdsStr}`;
+//   fetch(url).then(function(response) {
+//     if (response.ok) {
+//       response.json()
+//         .then(function(result) {
+//           //проверка пришли ли данные
+//           result.items.forEach((item, index) => {
+//             panel.items[index].snippet.viewCount = item.statistics.viewCount;
+//           });
+//         });
+//     } else {
+//       console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
+//     }
+//   }, function(error) {
+//     console.log(error);
+//   });
+// };
 /*****************************************************************/
+
 const isElementExist = function (element) {
   return !!document.body.querySelector(`${element}`);
 }
@@ -139,65 +187,43 @@ const removeChildren= function (element) {
   }
 }
 /*****************************************************************/
-const renderSearchField = function () {
-  console.log('renderSearchField()');
-
-  const form = document.createElement('form');
-  form.className = 'search-form';
-
-  const span = document.createElement('span');
-  span.className = 'search-form__button';
-
-  const i = document.createElement('i');
-  i.className = 'fas fa-search';
-
-  span.appendChild(i);
-
-  const input = document.createElement('input');
-  input.className = 'search-form__input';
-  input.setAttribute('type', 'search');
-  input.setAttribute('placeholder', 'Search...');
-
-  form.appendChild(span);
-  form.appendChild(input);
-
-  document.body.insertAdjacentElement('afterBegin', form);
-}
-
 const renderPanel = function () {
   console.log('renderPanel()');
+  preparePanelWrapper();
+  renderPanelItems();
+  renderPagination();
+};
 
+const preparePanelWrapper = function() {
   if (isElementExist('.main-wrapper')) {
-    console.log('main-wrapper exist');
     removeChildren(document.querySelector('.main-wrapper'));
   } else {
-    console.log('main-wrapper does not exist');
-
     const main = document.createElement('main');
     main.className = 'main-wrapper';
   
     document.querySelector('.search-form').insertAdjacentElement('afterEnd', main);
-  }
 
-  renderPanelItems();
-};
+    panel.el = main;
+  }
+}
 
 const renderPanelItems = function () {
   console.log('renderPanelItems()');
  
-  const firstItemNumber = panel.curPage * panel.countPerPage;
+  const firstItemNumber = (panel.curPage - 1) * panel.countPerPage;
   const lastItemNumber = firstItemNumber + panel.countPerPage;
 
   console.log(firstItemNumber, lastItemNumber);
-
+  console.log(panel.items);
   for (let i = firstItemNumber; i < lastItemNumber; i++) {
-    console.log('item: ', panel.items[i]);
-    parseResult(panel.items[i]);
-    document.querySelector('.main-wrapper').appendChild(renderItem());
+    console.log('item: ', i, panel.items[i], panel.items[i].snippet.viewCount);
+    let panelItem = new PanelItem(panel.items[i]);
+    console.log('panelItem >> ', panelItem);
+    panel.el.appendChild(renderItem(panelItem));
   }
 }
 
-const renderItem = function () {
+const renderItem = function (panelItem) {
   const wrapperItem = document.createElement('section');
   wrapperItem.className = 'main-wrapper__item';
   
@@ -235,30 +261,117 @@ const renderItem = function () {
 
 const renderPagination = function () {
   console.log('renderPagination()');
-
-  if (isElementExist('nav')) {
-    console.log('nav exist');
-    removeChildren(document.querySelector('.pagination'));
-  } else {
-    console.log('nav does not exist');
-    const nav = document.createElement('nav');
-
-    const ul = 
-      '<ul class="pagination"> \
-        <!-- <li class="prev">&#171;</li> --> \
-        <li class="active">1</li> \
-        <li>2</li> \
-        <li>3</li> \
-        <li class="disable">...</li> \
-        <!-- <li class="next">&#187;</li> --> \
-      </ul>';
-  
-      nav.insertAdjacentHTML('afterBegin', ul);
-  
-      document.querySelector('.main-wrapper').insertAdjacentElement('afterEnd', nav);
-      
-      document.querySelector('.pagination').addEventListener('click', goToPage);
-  }
-
+  preparePaginationWrapper();
+  renderPaginationItems();
 }
 
+const preparePaginationWrapper = function () {
+  if (isElementExist('.pagination')) {
+    removeChildren(document.querySelector('.pagination'));
+  } else {
+    const nav = document.createElement('nav');
+    const ul = document.createElement('ul');
+    ul.className = 'pagination';
+    ul.addEventListener('click', goToPage);
+    nav.appendChild(ul);
+    document.querySelector('.main-wrapper').insertAdjacentElement('afterEnd', nav);
+  }
+}
+
+const renderPaginationItems = function () {
+  let li = '';
+  if (panel.curPage < 5) {
+    for (let i = 0; i < +panel.curPage + 1; i++) {
+      li += (`<li>${i + 1}</li>`);
+    }
+  } else {
+    li = 
+    `<li>1</li> \
+    <li class="disable">...</li> \
+    <li>${panel.curPage - 1}</li> \
+    <li>${panel.curPage}</li> \
+    <li>${+panel.curPage + 1}</li>`;
+  }
+
+  document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
+
+  clearPrevPageNumber();
+  selectPageNumber();
+}
+
+const countPaginationItems = function () {
+
+}
+/*
+const renderPaginationItems = function () {
+  if (panel.curPage < 4) {
+    li = 
+    '<li>1</li> \
+    <li>2</li> \
+    <li>3</li> \
+    <li>4</li>';
+  } else {
+    li = 
+    `<li>1</li> \
+    <li class="disable">...</li> \
+    <li>${panel.curPage - 1}</li> \
+    <li>${panel.curPage}</li> \
+    <li>${+panel.curPage + 1}</li> \
+    <li class="disable">...</li> \
+    <li>${Math.floor(panel.items.length / panel.countPerPage)}</li>`;//????
+  }
+  
+  document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
+
+  const curLi = [...document.querySelector('.pagination').children].find(item => item.innerText === String(panel.curPage));
+  const indexCurLi = [...document.querySelector('.pagination').children].indexOf(curLi);
+  // console.log('curLi = ', curLi);
+  // console.log('indexCurLi = ', indexCurLi);
+  document.querySelector(`.pagination li:nth-child(${indexCurLi + 1})`).classList.add('active');
+}
+*/
+/*****************************************************************/
+const goToPage = function (pageNumber) {
+  console.log('goToPage()');
+  console.log('pageNumber = ', pageNumber.target);
+
+  if (pageNumber.target.tagName !== 'LI' || pageNumber.target.className === 'disable') {
+    return;
+  }
+
+  panel.curPage = pageNumber.target.innerText;
+
+  // clearPrevPageNumber();
+
+  // pageNumber.target.classList.add('active');
+
+  if (isNeedNewVideos()) {
+    makeAdditionalDataRequest();
+    console.log('add: ', panel.items);
+  }
+
+  renderPanel();
+};
+/*****************************************************************/
+const isNeedNewVideos = function () {
+  // console.log(panel.curPage * panel.countPerPage, panel.items.length);
+  // return (panel.curPage * panel.countPerPage > (panel.items.length - panel.countPerPage));//добавляем немного заранее поэтому - panel.countPerPage ???
+  return ((2 * panel.countPerPage) > (panel.items.length - panel.curPage * panel.countPerPage));//чтобы хватало на 2 следующие страницы
+}
+
+const selectPageNumber = function () {
+  const curLi = [...document.querySelector('.pagination').children].find(item => item.innerText === String(panel.curPage));
+  const indexCurLi = [...document.querySelector('.pagination').children].indexOf(curLi);
+  document.querySelector(`.pagination li:nth-child(${indexCurLi + 1})`).classList.add('active');
+}
+
+const clearPrevPageNumber = function () {
+  const prevSelectedPage = document.querySelector('.pagination li.active');
+  if (prevSelectedPage) {
+    const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
+    document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
+  }
+  // const prevSelectedPage = document.querySelector('.pagination li.active');
+  // const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
+  // document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
+};
