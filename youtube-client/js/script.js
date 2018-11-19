@@ -1,13 +1,17 @@
 // window.onload = function () {
 //   renderSearchField();
 // };
+
+const MAX_SHOWABLE_PAGES = 5;
+const RESERV_PAGES_NUMBER = 2;
+
 const panel = {
-  // countPages: 15,
   curPage: 1,
   countPerPage: 4,
+  totalPageCount: 2,
   items: [],
   requestStr: '',
-  pageToken: '',//???
+  pageToken: '',
   el: null
 };
 
@@ -18,7 +22,7 @@ const PanelItem = function (struct) {
   this.date = struct.snippet.publishedAt.substring(0, 10);
   this.description = struct.snippet.description;
   this.imageUrl = struct.snippet.thumbnails.medium.url;
-  this.viewCount = struct.snippet.viewCount || '';//??????????? WHY???
+  this.viewCount = struct.snippet.viewCount || '';
 }
 /*****************************************************************/
 const getDataUrl = function () {
@@ -93,90 +97,55 @@ const hideMessage = function () {
   }
 }
 /*****************************************************************/
-function makeDataRequest() {
-  fetch(getDataUrl()).then(function(response) {
-    if (response.ok) {
-      response.json()
-        .then(function(result) {
-          // console.log(result);
-          panel.requestStr = getUserInput();
-          panel.pageToken = result.nextPageToken;
-          panel.curPage = 1;
-          panel.items = result.items;
-        })
-        .then(function() {
-          makeViewsRequest(panel.items.map(item => item.id.videoId).join(','));
-        });
-    } else {
-      console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
-    }
-  }, function(error) {
-    console.log('error: ', error);
-  });
+const makeDataRequest = function () {
+  fetch(getDataUrl())
+    .then(response => response.json())
+    .then(result => {
+      // console.log(result);
+      panel.requestStr = getUserInput();
+      panel.pageToken = result.nextPageToken;
+      panel.curPage = 1;
+      panel.items = result.items;
+    })
+    .then(() => makeViewsRequest(panel.items.map(item => item.id.videoId).join(',')))
+    .catch(error => console.log('error: ', error));
 };
 
-function makeViewsRequest(videoIdsStr) {
-  fetch(getStatisticsUrl(videoIdsStr)).then(function(response) {
-    if (response.ok) {
-      response.json()
-        .then(function(result) {
-          result.items.forEach((item, index) => {
-            panel.items[index].snippet.viewCount = item.statistics.viewCount;
-          });
-          console.log('new items: ', panel.items);
-          renderPanel();
-        });
-    } else {
-      console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
+const makeViewsRequest = function (videoIdsStr) {
+  fetch(getStatisticsUrl(videoIdsStr))
+    .then(response => response.json())
+    .then(result => {
+      result.items.forEach((item, index) => panel.items[index].snippet.viewCount = item.statistics.viewCount);
+      console.log('new items: ', panel.items);
       renderPanel();
-    }
-    // renderPanel();
-  }, function(error) {
-    console.log(error);
-    renderPanel();
-  });
+    })
+    .catch(error => {
+      console.log(error);
+      renderPanel();
+    });
 };
 /*****************************************************************/
-function makeAdditionalDataRequest() {
-  fetch(getAdditionalDataUrl()).then(function(response) {
-    if (response.ok) {
-      response.json()
-        .then(function(result) {
-          panel.pageToken = result.nextPageToken;
-          result.items.forEach(item => panel.items.push(item));
-          console.log(panel.items);
-        })
-        // .then(function() {
-        //   makeViewsRequest(panel.items.map(item => item.id.videoId).join(','));
-        // });
-    } else {
-      console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
-    }
-  }, function(error) {
-    console.log('error: ', error);
-  });
+const makeAdditionalDataRequest = function () {
+  const prevItemsLength = panel.items.length;
+  fetch(getAdditionalDataUrl())
+    .then(response => response.json())
+    .then(result => {
+      panel.pageToken = result.nextPageToken;
+      result.items.forEach(item => panel.items.push(item));
+      panel.totalPageCount = Math.floor(panel.items.length / panel.countPerPage - RESERV_PAGES_NUMBER);
+      return result.items;
+    })
+    .then(result => makeAdditionalViewsRequest(result.map(item => item.id.videoId).join(','), prevItemsLength))
+    .catch(error => console.log('error: ', error));
 };
 
-// function makeAdditionalViewsRequest(videoIdsStr) {
-//   const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&id=${videoIdsStr}`;
-//   fetch(url).then(function(response) {
-//     if (response.ok) {
-//       response.json()
-//         .then(function(result) {
-//           //проверка пришли ли данные
-//           result.items.forEach((item, index) => {
-//             panel.items[index].snippet.viewCount = item.statistics.viewCount;
-//           });
-//         });
-//     } else {
-//       console.log('Network request for products.json failed with response ' + response.status + ': ' + response.statusText);
-//     }
-//   }, function(error) {
-//     console.log(error);
-//   });
-// };
+const makeAdditionalViewsRequest = function (videoIdsStr, prevItemsLength) {
+  fetch(getStatisticsUrl(videoIdsStr))
+    .then(response => response.json())
+    .then(result => result.items.forEach((item, index) => panel.items[index + prevItemsLength].snippet.viewCount = item.statistics.viewCount))
+    .catch(error => console.log(error));
+};
 /*****************************************************************/
-
 const isElementExist = function (element) {
   return !!document.body.querySelector(`${element}`);
 }
@@ -218,7 +187,6 @@ const renderPanelItems = function () {
   for (let i = firstItemNumber; i < lastItemNumber; i++) {
     console.log('item: ', i, panel.items[i], panel.items[i].snippet.viewCount);
     let panelItem = new PanelItem(panel.items[i]);
-    console.log('panelItem >> ', panelItem);
     panel.el.appendChild(renderItem(panelItem));
   }
 }
@@ -280,8 +248,9 @@ const preparePaginationWrapper = function () {
 
 const renderPaginationItems = function () {
   let li = '';
-  if (panel.curPage < 5) {
-    for (let i = 0; i < +panel.curPage + 1; i++) {
+  if (panel.curPage < MAX_SHOWABLE_PAGES) {
+    const showablePageCount = panel.totalPageCount > panel.curPage + 1 ? Math.min(panel.totalPageCount, MAX_SHOWABLE_PAGES) : panel.curPage + 1;
+    for (let i = 0; i < showablePageCount; i++) {
       li += (`<li>${i + 1}</li>`);
     }
   } else {
@@ -290,7 +259,7 @@ const renderPaginationItems = function () {
     <li class="disable">...</li> \
     <li>${panel.curPage - 1}</li> \
     <li>${panel.curPage}</li> \
-    <li>${+panel.curPage + 1}</li>`;
+    <li>${panel.curPage + 1}</li>`;
   }
 
   document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
@@ -302,34 +271,6 @@ const renderPaginationItems = function () {
 const countPaginationItems = function () {
 
 }
-/*
-const renderPaginationItems = function () {
-  if (panel.curPage < 4) {
-    li = 
-    '<li>1</li> \
-    <li>2</li> \
-    <li>3</li> \
-    <li>4</li>';
-  } else {
-    li = 
-    `<li>1</li> \
-    <li class="disable">...</li> \
-    <li>${panel.curPage - 1}</li> \
-    <li>${panel.curPage}</li> \
-    <li>${+panel.curPage + 1}</li> \
-    <li class="disable">...</li> \
-    <li>${Math.floor(panel.items.length / panel.countPerPage)}</li>`;//????
-  }
-  
-  document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
-
-  const curLi = [...document.querySelector('.pagination').children].find(item => item.innerText === String(panel.curPage));
-  const indexCurLi = [...document.querySelector('.pagination').children].indexOf(curLi);
-  // console.log('curLi = ', curLi);
-  // console.log('indexCurLi = ', indexCurLi);
-  document.querySelector(`.pagination li:nth-child(${indexCurLi + 1})`).classList.add('active');
-}
-*/
 /*****************************************************************/
 const goToPage = function (pageNumber) {
   console.log('goToPage()');
@@ -339,13 +280,9 @@ const goToPage = function (pageNumber) {
     return;
   }
 
-  panel.curPage = pageNumber.target.innerText;
+  panel.curPage = parseInt(pageNumber.target.innerText, 10);
 
-  // clearPrevPageNumber();
-
-  // pageNumber.target.classList.add('active');
-
-  if (isNeedNewVideos()) {
+  if (needLoadNewVideos()) {
     makeAdditionalDataRequest();
     console.log('add: ', panel.items);
   }
@@ -353,10 +290,11 @@ const goToPage = function (pageNumber) {
   renderPanel();
 };
 /*****************************************************************/
-const isNeedNewVideos = function () {
-  // console.log(panel.curPage * panel.countPerPage, panel.items.length);
-  // return (panel.curPage * panel.countPerPage > (panel.items.length - panel.countPerPage));//добавляем немного заранее поэтому - panel.countPerPage ???
-  return ((2 * panel.countPerPage) > (panel.items.length - panel.curPage * panel.countPerPage));//чтобы хватало на 2 следующие страницы
+const needLoadNewVideos = function () {
+  let minVideosNeeded = RESERV_PAGES_NUMBER * panel.countPerPage;
+  let actualVideosLeft = panel.items.length - panel.curPage * panel.countPerPage;
+
+  return (actualVideosLeft < minVideosNeeded);
 }
 
 const selectPageNumber = function () {
@@ -371,7 +309,4 @@ const clearPrevPageNumber = function () {
     const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
     document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
   }
-  // const prevSelectedPage = document.querySelector('.pagination li.active');
-  // const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
-  // document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
 };
