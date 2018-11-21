@@ -2,22 +2,28 @@
 //   renderSearchField();
 // };
 
+const API_KEY = 'AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ';
 const MAX_SHOWABLE_PAGES = 5;
 const RESERV_PAGES_NUMBER = 2;
+const PANEL_ITEM_WIDTH = 340;
+const MIN_PANEL_ITEM_PER_PAGE = 1;
+const MAX_PANEL_ITEM_PER_PAGE = 4;
 
 const panel = {
   curPage: 1,
-  countPerPage: 4,
+  countPerPage: null,//4
   totalPageCount: 2,
   items: [],
   requestStr: '',
   pageToken: '',
-  el: null
+  el: null,
+  // mouseupCount: 0
 };
 
 const PanelItem = function (struct) {
   this.title = struct.snippet.title;
-  this.link = struct.id.videoId ? `https://www.youtube.com/watch?v=${struct.id.videoId}` : `https://www.youtube.com/channel/${struct.snippet.channelId}`;
+  // this.link = struct.id.videoId ? `https://www.youtube.com/watch?v=${struct.id.videoId}` : `https://www.youtube.com/channel/${struct.snippet.channelId}`;
+  this.link = `https://www.youtube.com/watch?v=${struct.id.videoId}`;
   this.author = struct.snippet.channelTitle;
   this.date = struct.snippet.publishedAt.substring(0, 10);
   this.description = struct.snippet.description;
@@ -26,14 +32,36 @@ const PanelItem = function (struct) {
 }
 /*****************************************************************/
 const getDataUrl = function () {
-  return `https://www.googleapis.com/youtube/v3/search?part=snippet&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&q=${getUserInput()}&maxResults=15`;
+  return `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&key=${API_KEY}&q=${getUserInput()}&maxResults=15`;
 }
 const getStatisticsUrl = function (videoIdsStr) {
-  return `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&id=${videoIdsStr}`;
+  return `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&key=${API_KEY}&id=${videoIdsStr}`;
 }
 
 const getAdditionalDataUrl = function () {
-  return `https://www.googleapis.com/youtube/v3/search?part=snippet&key=AIzaSyCsfImNexVdmlnxQKZHsELAd4_45JuTbQQ&q=${panel.requestStr}&pageToken=${panel.pageToken}&maxResults=15`;
+  return `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&key=${API_KEY}&q=${panel.requestStr}&pageToken=${panel.pageToken}&maxResults=15`;
+}
+/*****************************************************************/
+const onPageLoad = function () {
+
+  window.addEventListener('resize', function() {
+    if (isElementExist('.main-wrapper')) {
+      const countPerPageTmp = countItemsPerPage();
+      if (panel.countPerPage !== countPerPageTmp) {
+        const leftItemIndex = (panel.curPage - 1) * panel.countPerPage;
+        console.log('leftItemIndex: ', leftItemIndex);
+        panel.countPerPage = countPerPageTmp;
+        console.log('countPerPage: ', panel.countPerPage);
+        panel.curPage = Math.floor((leftItemIndex / panel.countPerPage) + 1);
+        console.log('curPage: ', panel.curPage);
+        renderPanel();
+      }
+    } else {
+      return;
+    }
+  });
+
+  renderSearchField();
 }
 /*****************************************************************/
 const renderSearchField = function () {
@@ -55,13 +83,20 @@ const renderSearchField = function () {
   });
 
   document.addEventListener('keydown', function(key) {
-    if (key.code == 'Enter' && checkUserInput()) {
+    if (key.code === 'Enter') {
       key.preventDefault();
-      makeDataRequest();
-    }
+      if (checkUserInput()) {
+        makeDataRequest();
+      }
+    } 
   });
 }
 /*****************************************************************/
+const countItemsPerPage = function () {
+  const count = Math.floor(window.innerWidth / PANEL_ITEM_WIDTH);
+  return (count > 0) ? Math.min(count, MAX_PANEL_ITEM_PER_PAGE) : MIN_PANEL_ITEM_PER_PAGE;
+}
+
 const getUserInput = function () {
   return document.querySelector('.search-form__input').value.trim();
 }
@@ -71,7 +106,7 @@ const checkUserInput = function () {
     hideMessage();
     return true;
   } else {
-    showMessage();
+    showMessage('Please enter your request');
     return false;
   }
 }
@@ -80,12 +115,12 @@ const isEmptyString = function (str) {
   return (str.length === 0 || !str.trim());
 }
 /*****************************************************************/
-const showMessage = function () {
+const showMessage = function (str) {
   if (isElementExist('.message')) {
+    document.querySelector('.message').innerText = str;
     document.querySelector('.message').hidden = false;
   } else {
-    const message = '<p class="message">Please enter your request</p>';
-    //бордер красный сделать
+    const message = `<p class="message">${str}</p>`;
     document.querySelector('.search-form__content').insertAdjacentHTML('afterEnd', message);
   }  
 }
@@ -93,7 +128,6 @@ const showMessage = function () {
 const hideMessage = function () {
   if (isElementExist('.message')) {
     document.querySelector('.message').hidden = true;
-    //бордер серый сделать
   }
 }
 /*****************************************************************/
@@ -101,14 +135,14 @@ const makeDataRequest = function () {
   fetch(getDataUrl())
     .then(response => response.json())
     .then(result => {
-      // console.log(result);
       panel.requestStr = getUserInput();
       panel.pageToken = result.nextPageToken;
       panel.curPage = 1;
+      panel.totalPageCount = 2;
       panel.items = result.items;
     })
     .then(() => makeViewsRequest(panel.items.map(item => item.id.videoId).join(',')))
-    .catch(error => console.log('error: ', error));
+    .catch(error => console.log(error));
 };
 
 const makeViewsRequest = function (videoIdsStr) {
@@ -136,7 +170,7 @@ const makeAdditionalDataRequest = function () {
       return result.items;
     })
     .then(result => makeAdditionalViewsRequest(result.map(item => item.id.videoId).join(','), prevItemsLength))
-    .catch(error => console.log('error: ', error));
+    .catch(error => console.log(error));
 };
 
 const makeAdditionalViewsRequest = function (videoIdsStr, prevItemsLength) {
@@ -164,13 +198,87 @@ const renderPanel = function () {
 };
 
 const preparePanelWrapper = function() {
+  // if (isElementExist('.main-wrapper')) {
+  //   removeChildren(document.querySelector('.main-wrapper'));
+  // } else {
+  //   const main = document.createElement('main');
+  //   main.className = 'main-wrapper';
+  
+  //   document.querySelector('.search-form').insertAdjacentElement('afterEnd', main);
+
   if (isElementExist('.main-wrapper')) {
     removeChildren(document.querySelector('.main-wrapper'));
   } else {
+    // const slides = document.createElement('div');
+    // slides.className = 'slides';
+
     const main = document.createElement('main');
     main.className = 'main-wrapper';
+
+    // slides.appendChild(main);
   
+    // document.querySelector('.search-form').insertAdjacentElement('afterEnd', slides);
     document.querySelector('.search-form').insertAdjacentElement('afterEnd', main);
+
+    /** AAAAAAAAAAAAAAAAAAAAAAAAAAAAA*/
+
+    // slides.addEventListener('mouseup', function(e) {
+    //   console.log('---mouseup---', e.target);
+    //   if (e.target.className === 'slides' || e.target.className === 'main-wrapper' || e.target.className === 'main-wrapper__item') {
+    //     console.log('---y---');
+    //     // const el = document.querySelector('.main-wrapper');
+    //     // el.classList.add('move');
+    //     // renderPanel();
+    //     panel.curPage += 1;
+    //     // clearPrevPageNumber();
+    //     // selectPageNumber();
+
+    //     renderPanelItems();
+
+    //     const element = document.querySelector('.main-wrapper');
+    //     element.classList.add('move');
+
+    //     setTimeout(function() {     
+    //       console.log('---Timeout---');
+    //       // element.classList.remove("move");
+    //       // element.classList.add('move2');
+    //       // element.classList.remove("move");
+    //       let i = 0;
+    //       while (i < panel.countPerPage) {
+    //         element.removeChild(element.firstChild);
+    //         i++;
+    //       }
+    //       // element.classList.remove("move");
+    //     }, 800);
+
+    //   }
+    // });
+
+    // main.addEventListener('mousedown', function() {
+    //   console.log('---mouse down---');
+    //   return false;
+    // });
+
+    // let processing = false;
+    // main.addEventListener('mouseup', function() {
+    //   panel.mouseupCount++;
+    //   // console.log('panel.mouseupCount = ', panel.mouseupCount);
+    //   if (processing) {
+    //     return;
+    //   } else {
+    //     processing = true;
+    //     // console.log('processing = ', processing);
+    //     anim
+    //       processing = false;
+    //       page += mouseupCount
+    //       mouseupCount = 0;
+    //   }
+    //   // panel.mouseupCount++;
+    //   // setTimeout(function() {     
+    //   //   console.log('---mouse up---', panel.mouseupCount);
+    //   //   panel.mouseupCount = 0;
+    //   // }, 1500);
+    // });
 
     panel.el = main;
   }
@@ -178,6 +286,10 @@ const preparePanelWrapper = function() {
 
 const renderPanelItems = function () {
   console.log('renderPanelItems()');
+
+  // const countPerPageTmp = Math.floor(window.innerWidth / 340);
+  // panel.countPerPage = countPerPageTmp;
+  panel.countPerPage = countItemsPerPage();
  
   const firstItemNumber = (panel.curPage - 1) * panel.countPerPage;
   const lastItemNumber = firstItemNumber + panel.countPerPage;
@@ -185,6 +297,11 @@ const renderPanelItems = function () {
   console.log(firstItemNumber, lastItemNumber);
   console.log(panel.items);
   for (let i = firstItemNumber; i < lastItemNumber; i++) {
+    // if (!panel.items[i]) {
+    //   showMessage('aaaaaaaaaa');
+    //   removeChildren(document.querySelector('body'));
+    //   return;
+    // }
     console.log('item: ', i, panel.items[i], panel.items[i].snippet.viewCount);
     let panelItem = new PanelItem(panel.items[i]);
     panel.el.appendChild(renderItem(panelItem));
