@@ -1,66 +1,42 @@
-import { makeDataRequest, makeAdditionalDataRequest, checkUserInput } from './requests';
-import { isElementExist, removeChildren } from './helpers';
-/*****************************************************************/
-const MAX_SHOWABLE_PAGES = 5;
-const RESERV_PAGES_NUMBER = 2;
-const PANEL_ITEM_WIDTH = 340;
-const MIN_PANEL_ITEM_PER_PAGE = 1;
-const MAX_PANEL_ITEM_PER_PAGE = 4;
+import {
+  makeDataRequest,
+  makeAdditionalDataRequest,
+} from './requests';
 
-const panel = {
-  curPage: 1,
-  countPerPage: null,
-  totalPageCount: 2,
-  items: [],
-  requestStr: '',
-  pageToken: '',
-  el: null,
+import {
+  panel,
+  PanelItem,
+  MAX_SHOWABLE_PAGES,
+  RESERV_PAGES_NUMBER,
+  PANEL_ITEM_WIDTH,
+  MIN_PANEL_ITEM_PER_PAGE,
+  MAX_PANEL_ITEM_PER_PAGE,
+} from './renderData';
+
+import {
+  isElementExist,
+  isEmptyString,
+  removeChildren,
+} from './helpers';
+/** ************************************************************** */
+const showMessage = (str) => {
+  if (isElementExist('.message')) {
+    const message = document.querySelector('.message');
+    message.innerText = str;
+    message.hidden = false;
+  } else {
+    const message = `<p class="message">${str}</p>`;
+    document.querySelector('.search-form__content').insertAdjacentHTML('afterEnd', message);
+  }
 };
 
-const PanelItem = function (struct) {
-  this.title = struct.snippet.title;
-  this.link = `https://www.youtube.com/watch?v=${struct.id.videoId}`;
-  this.author = struct.snippet.channelTitle;
-  this.date = struct.snippet.publishedAt.substring(0, 10);
-  this.description = struct.snippet.description;
-  this.imageUrl = struct.snippet.thumbnails.medium.url;
-  this.viewCount = struct.snippet.viewCount || '';
+const hideMessage = () => {
+  if (isElementExist('.message')) {
+    document.querySelector('.message').hidden = true;
+  }
 };
-/*****************************************************************/
-const renderSearchField = function () {
-  const searchForm = 
-    '<form class="search-form"> \
-      <div class="search-form__content"> \
-        <span class="search-form__button"><i class="fas fa-search"></i></span> \
-        <input class="search-form__input" type="search" placeholder="Search..."/> \
-      </div> \
-    </form>';
 
-  document.body.insertAdjacentHTML('afterBegin', searchForm);
-
-  document.body.querySelector('.search-form__button').addEventListener('click', function() {
-    if (checkUserInput()) {
-      makeDataRequest();
-    } 
-  });
-
-  document.addEventListener('keydown', function(key) {
-    if (key.code === 'Enter') {
-      key.preventDefault();
-      if (checkUserInput()) {
-        makeDataRequest();
-      }
-    } 
-  });
-};
-/*****************************************************************/
-const renderPanel = function () {
-  preparePanelWrapper();
-  renderPanelItems();
-  renderPagination();
-};
-  
-const preparePanelWrapper = function() {
+const preparePanelWrapper = () => {
   if (isElementExist('.main-wrapper')) {
     removeChildren(document.querySelector('.main-wrapper'));
   } else {
@@ -73,24 +49,11 @@ const preparePanelWrapper = function() {
   }
 };
 
-const renderPanelItems = function () {
-  panel.countPerPage = countItemsPerPage();
- 
-  const firstItemNumber = (panel.curPage - 1) * panel.countPerPage;
-  const lastItemNumber = firstItemNumber + panel.countPerPage;
-
-  for (let i = firstItemNumber; i < lastItemNumber; i++) {
-    let panelItem = new PanelItem(panel.items[i]);
-    panel.el.appendChild(renderItem(panelItem));
-  }
-};
-
-const renderItem = function (panelItem) {
+const renderItem = (panelItem) => {
   const wrapperItem = document.createElement('section');
   wrapperItem.className = 'main-wrapper__item';
-  
-  const item =
-      `<div class="main-wrapper__item-header"> 
+
+  const item = `<div class="main-wrapper__item-header"> 
         <img src="${panelItem.imageUrl}" alt="image" width="320" height="180"/>
         <a href="${panelItem.link}" target="_blank">${panelItem.title}</a>
       </div>
@@ -116,17 +79,67 @@ const renderItem = function (panelItem) {
         ${panelItem.description}
       </div> `;
 
-  wrapperItem.insertAdjacentHTML('afterBegin', item); 
+  wrapperItem.insertAdjacentHTML('afterBegin', item);
 
   return wrapperItem;
 };
-/*****************************************************************/
-const renderPagination = function () {
-  preparePaginationWrapper();
-  renderPaginationItems();
+
+const countItemsPerPage = () => {
+  const count = Math.floor(window.innerWidth / PANEL_ITEM_WIDTH);
+  return (count > 0) ? Math.min(count, MAX_PANEL_ITEM_PER_PAGE) : MIN_PANEL_ITEM_PER_PAGE;
 };
 
-const preparePaginationWrapper = function () {
+const renderPanelItems = () => {
+  panel.countPerPage = countItemsPerPage();
+
+  const firstItemNumber = (panel.curPage - 1) * panel.countPerPage;
+  const lastItemNumber = firstItemNumber + panel.countPerPage;
+
+  for (let i = firstItemNumber; i < lastItemNumber; i += 1) {
+    const panelItem = new PanelItem(panel.items[i]);
+    panel.el.appendChild(renderItem(panelItem));
+  }
+};
+
+const selectPageNumber = () => {
+  const paginationItems = [...document.querySelector('.pagination').children];
+  const curLi = paginationItems.find(item => item.innerText === String(panel.curPage));
+  const indexCurLi = paginationItems.indexOf(curLi);
+  document.querySelector(`.pagination li:nth-child(${indexCurLi + 1})`).classList.add('active');
+};
+
+const clearPrevPageNumber = () => {
+  if (isElementExist('.pagination li.active')) {
+    const prevSelectedPage = document.querySelector('.pagination li.active');
+    const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
+    document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
+  }
+};
+
+const renderPaginationItems = () => {
+  let li = '';
+  if (panel.curPage < MAX_SHOWABLE_PAGES) {
+    const showablePageCount = panel.totalPageCount > panel.curPage + 1
+      ? Math.min(panel.totalPageCount, MAX_SHOWABLE_PAGES)
+      : panel.curPage + 1;
+    for (let i = 0; i < showablePageCount; i += 1) {
+      li += (`<li>${i + 1}</li>`);
+    }
+  } else {
+    li = `<li>1</li> \
+    <li class="disable">...</li> \
+    <li>${panel.curPage - 1}</li> \
+    <li>${panel.curPage}</li> \
+    <li>${panel.curPage + 1}</li>`;
+  }
+
+  document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
+
+  clearPrevPageNumber();
+  selectPageNumber();
+};
+
+const preparePaginationWrapper = () => {
   if (isElementExist('.pagination')) {
     removeChildren(document.querySelector('.pagination'));
   } else {
@@ -139,29 +152,61 @@ const preparePaginationWrapper = function () {
   }
 };
 
-const renderPaginationItems = function () {
-  let li = '';
-  if (panel.curPage < MAX_SHOWABLE_PAGES) {
-    const showablePageCount = panel.totalPageCount > panel.curPage + 1 ? Math.min(panel.totalPageCount, MAX_SHOWABLE_PAGES) : panel.curPage + 1;
-    for (let i = 0; i < showablePageCount; i++) {
-      li += (`<li>${i + 1}</li>`);
-    }
-  } else {
-    li = 
-    `<li>1</li> \
-    <li class="disable">...</li> \
-    <li>${panel.curPage - 1}</li> \
-    <li>${panel.curPage}</li> \
-    <li>${panel.curPage + 1}</li>`;
-  }
-
-  document.querySelector('.pagination').insertAdjacentHTML('afterBegin', li);
-
-  clearPrevPageNumber();
-  selectPageNumber();
+const renderPagination = () => {
+  preparePaginationWrapper();
+  renderPaginationItems();
 };
-/*****************************************************************/
-const goToPage = function (pageNumber) {
+
+const renderPanel = () => {
+  preparePanelWrapper();
+  renderPanelItems();
+  renderPagination();
+};
+
+const checkUserInput = () => {
+  const userInput = document.querySelector('.search-form__input').value.trim();
+  if (!isEmptyString(userInput)) {
+    hideMessage();
+    return true;
+  }
+  showMessage('Please enter your request');
+  return false;
+};
+
+const renderSearchField = () => {
+  const searchForm = '<form class="search-form">\n'
+      + '<div class="search-form__content">\n'
+        + '<span class="search-form__button"><i class="fas fa-search"></i></span>\n'
+        + '<input class="search-form__input" type="search" placeholder="Search..."/>\n'
+      + '</div>\n'
+    + '</form>\n';
+
+  document.body.insertAdjacentHTML('afterBegin', searchForm);
+
+  document.body.querySelector('.search-form__button').addEventListener('click', () => {
+    if (checkUserInput()) {
+      makeDataRequest(renderPanel, showMessage);
+    }
+  });
+
+  document.addEventListener('keydown', (key) => {
+    if (key.code === 'Enter') {
+      key.preventDefault();
+      if (checkUserInput()) {
+        makeDataRequest(renderPanel, showMessage);
+      }
+    }
+  });
+};
+/** ************************************************************** */
+const needLoadNewVideos = () => {
+  const minVideosNeeded = RESERV_PAGES_NUMBER * panel.countPerPage;
+  const actualVideosLeft = panel.items.length - panel.curPage * panel.countPerPage;
+
+  return (actualVideosLeft < minVideosNeeded);
+};
+
+const goToPage = (pageNumber) => {
   if (pageNumber.target.tagName !== 'LI' || pageNumber.target.className === 'disable') {
     return;
   }
@@ -176,49 +221,11 @@ const goToPage = function (pageNumber) {
 
   renderPanel();
 };
-
-const needLoadNewVideos = function () {
-  let minVideosNeeded = RESERV_PAGES_NUMBER * panel.countPerPage;
-  let actualVideosLeft = panel.items.length - panel.curPage * panel.countPerPage;
-  
-  return (actualVideosLeft < minVideosNeeded);
+/** ************************************************************** */
+export {
+  panel,
+  renderSearchField,
+  renderPanel,
+  hideMessage,
+  countItemsPerPage,
 };
-
-const selectPageNumber = function () {
-  const paginationItems = [...document.querySelector('.pagination').children];
-  const curLi = paginationItems.find(item => item.innerText === String(panel.curPage));
-  const indexCurLi = paginationItems.indexOf(curLi);
-  document.querySelector(`.pagination li:nth-child(${indexCurLi + 1})`).classList.add('active');
-};
-
-const clearPrevPageNumber = function () {
-  if (isElementExist('.pagination li.active')) {
-    const prevSelectedPage = document.querySelector('.pagination li.active');
-    const indexPrevSelectedPage = [...document.querySelector('.pagination').children].indexOf(prevSelectedPage);
-    document.querySelector(`.pagination li:nth-child(${indexPrevSelectedPage + 1})`).classList.remove('active');
-  }
-};
-
-const showMessage = function (str) {
-  if (isElementExist('.message')) {
-    const message = document.querySelector('.message');
-    message.innerText = str;
-    message.hidden = false;
-  } else {
-    const message = `<p class="message">${str}</p>`;
-    document.querySelector('.search-form__content').insertAdjacentHTML('afterEnd', message);
-  }  
-};
-
-const hideMessage = function () {
-  if (isElementExist('.message')) {
-    document.querySelector('.message').hidden = true;
-  }
-};
-
-const countItemsPerPage = function () {
-  const count = Math.floor(window.innerWidth / PANEL_ITEM_WIDTH);
-  return (count > 0) ? Math.min(count, MAX_PANEL_ITEM_PER_PAGE) : MIN_PANEL_ITEM_PER_PAGE;
-};
-/*****************************************************************/
-export { panel, renderPanel, renderSearchField, countItemsPerPage, showMessage, hideMessage, RESERV_PAGES_NUMBER };

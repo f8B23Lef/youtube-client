@@ -1,15 +1,11 @@
-const isElementExist = function (element) {
-  return !!document.body.querySelector(`${element}`);
-};
+const isElementExist = element => !!document.body.querySelector(`${element}`);
 
-const isEmptyString = function (str) {
-  return (str.length === 0 || !str.trim());
-};
+const isEmptyString = str => (str.length === 0 || !str.trim());
 
-const removeChildren = function (element) {
+const removeChildren = (element) => {
   while (element.firstChild) {
     element.removeChild(element.firstChild);
   }
 };
-/*****************************************************************/
+/** ************************************************************** */
 export { isElementExist, isEmptyString, removeChildren };

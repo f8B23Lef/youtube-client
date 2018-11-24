@@ -1,9 +1,15 @@
-import { panel, renderSearchField, renderPanel, hideMessage, countItemsPerPage } from './js/render';
-import { isElementExist } from './js/helpers';
-/*****************************************************************/
-window.onload = function () {
+import {
+  panel,
+  renderSearchField,
+  renderPanel,
+  hideMessage,
+  countItemsPerPage,
+} from './js/render';
 
-  window.addEventListener('resize', function() {
+import { isElementExist } from './js/helpers';
+/** ************************************************************** */
+window.onload = () => {
+  window.addEventListener('resize', () => {
     hideMessage();
     if (isElementExist('.main-wrapper')) {
       const countPerPageTmp = countItemsPerPage();
@@ -13,10 +19,8 @@ window.onload = function () {
         panel.curPage = Math.floor((leftItemIndex / panel.countPerPage) + 1);
         renderPanel();
       }
-    } else {
-      return;
     }
   });
 
   renderSearchField();
-}
+};
